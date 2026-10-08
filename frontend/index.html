@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <meta charset="utf-8">
+        <meta content="width=device-width, initial-scale=1" name="viewport">
+        <title>Подключение чат-ассистента</title>
+        <link href="/assets/styles.css" rel="stylesheet">
+        <script defer src="/assets/chat-ui.js"></script>
+        <script defer src="/assets/admin.js"></script>
+    </head>
+    <body class="demo-body">
+        <header class="demo-intro">
+            <span class="demo-badge">Прототип · PostgreSQL</span>
+            <h1>Создайте чат с вашей базой</h1>
+            <p>Подключите БД, выберите разрешённые таблицы и отправьте ссылку на чат.</p>
+            <a href="/demo">Открыть готовую локальную демонстрацию</a>
+        </header>
+        <main>
+            <section class="panel admin-panel" id="connection-step">
+                <h2>1. Подключение</h2>
+                <form class="admin-grid" id="connection-form">
+                    <label>
+                        Адрес
+                        <input maxlength="253" name="host" required value="127.0.0.1">
+                    </label>
+                    <label>
+                        Порт
+                        <input max="65535" min="1" name="port" required type="number" value="5432">
+                    </label>
+                    <label>
+                        База
+                        <input name="name" required value="university">
+                    </label>
+                    <label>
+                        Пользователь только для чтения
+                        <input name="user" required value="assistant_ro">
+                    </label>
+                    <label>
+                        Пароль
+                        <input autocomplete="off" name="password" required type="password">
+                    </label>
+                    <label>
+                        SSL
+                        <select name="ssl">
+                            <option value="disable">Отключено — локальная БД</option>
+                            <option value="require">Обязательно</option>
+                            <option value="verify-full">С проверкой сертификата</option>
+                            <option value="prefer">По возможности</option>
+                        </select>
+                    </label>
+                    <button class="button primary" type="submit">Проверить и подключить</button>
+                </form>
+                <p id="connection-status" role="status"></p>
+            </section>
+            <section class="panel admin-panel" hidden id="access-step">
+                <h2>2. Разрешённые таблицы и поля</h2>
+                <p>Включите таблицы и отметьте конкретные поля для публичного чата. Поля id и внешние ключи нужны для JOIN. Чувствительные поля закрыты автоматически, оценки и идентификаторы учащихся доступны только в агрегатах.</p>
+                <form id="connection-access">
+                    <div id="connection-tables"></div>
+                    <div class="access-actions">
+                        <button class="button neutral" id="select-safe" type="button">Выбрать все доступные поля</button>
+                        <button class="button primary" type="submit">Сохранить и создать ссылку</button>
+                    </div>
+                </form>
+                <p id="access-status" role="status"></p>
+                <details>
+                    <summary>Ссылка на настройки этого подключения</summary>
+                    <p>Сохраните её для изменения доступа. Посетителям отправляйте ссылку на чат ниже.</p>
+                    <input id="management-link" readonly>
+                </details>
+            </section>
+            <section class="panel admin-panel" hidden id="share-step">
+                <h2>3. Поделитесь чатом</h2>
+                <label>
+                    Публичная ссылка
+                    <input id="chat-link" readonly>
+                </label>
+                <div class="example-questions">
+                    <button class="button neutral" id="copy-chat" type="button">Копировать</button>
+                    <a class="button primary" id="open-chat" rel="noopener" target="_blank">Открыть чат</a>
+                </div>
+                <details>
+                    <summary>Встроить виджет на сайт</summary>
+                    <label>
+                        Код iframe
+                        <textarea id="iframe-code" readonly rows="3"></textarea>
+                    </label>
+                    <label>
+                        Кнопка чата
+                        <textarea id="button-code" readonly rows="3"></textarea>
+                    </label>
+                </details>
+                <button class="text-button" id="remove-chat" type="button">Удалить подключение и отключить ссылку</button>
+                <p id="share-status" role="status"></p>
+            </section>
+            <p class="dashboard-note">Подключения хранятся в памяти сервера. После перезапуска создайте их заново. Для локальной демонстрации пароль: change_me.</p>
+        </main>
+    </body>
+</html>

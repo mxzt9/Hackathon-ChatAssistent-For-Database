@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+    <head>
+        <meta charset="utf-8">
+        <meta content="width=device-width, initial-scale=1" name="viewport">
+        <title>Чат с базой данных</title>
+        <link href="/assets/styles.css" rel="stylesheet">
+        <script defer src="/assets/chat-ui.js"></script>
+        <script defer src="/assets/widget.js"></script>
+    </head>
+    <body class="widget-body">
+        <main class="widget-shell panel chat-panel">
+            <header class="chat-heading">
+                <div>
+                    <h1 id="chat-title">Чат с базой данных</h1>
+                    <p>Ответы на основе разрешённых данных</p>
+                </div>
+                <button class="text-button" hidden id="retry-database" type="button">Проверить БД</button>
+                <button class="text-button" id="clear-chat" type="button">Очистить</button>
+            </header>
+            <div aria-live="polite" class="chat-messages" id="widget-messages" role="log"></div>
+            <form class="chat-composer" id="widget-form">
+                <div class="composer-row">
+                    <label class="sr-only" for="widget-input">Вопрос</label>
+                    <textarea id="widget-input" maxlength="2000" placeholder="Задайте вопрос о данных…" required rows="2"></textarea>
+                    <button class="button primary" id="send-question" type="submit">Отправить</button>
+                    <button class="button neutral" hidden id="cancel-question" type="button">Остановить</button>
+                </div>
+                <p id="widget-status" role="status">Enter — отправить · Shift + Enter — новая строка</p>
+            </form>
+        </main>
+    </body>
+</html>

@@ -1,0 +1,33 @@
+:host {
+    position: fixed !important;
+    right: 20px !important;
+    bottom: 20px !important;
+    z-index: 2147483000 !important;
+    font-family: Arial, sans-serif
+}
+
+button {
+    background: #2c2c2c;
+    color: #fff;
+    border: 0;
+    border-radius: 28px;
+    padding: 16px 22px;
+    cursor: pointer;
+    box-shadow: 0 5px 20px #0003;
+    font-size: 15px
+}
+
+iframe {
+    display: block;
+    width: min(440px, calc(100vw - 40px));
+    height: min(680px, calc(100dvh - 110px));
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 10px 45px #0003;
+    margin-bottom: 12px;
+    background: white
+}
+
+iframe[hidden] {
+    display: none
+}

@@ -1,0 +1,28 @@
+# Настройки и окружение разработчика
+.env
+.env.*
+!.env.fullstack.example
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Кэши Python и результаты проверок
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.test-tmp/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit.xml
+*.log
+
+# Локальные веса моделей и выгрузки БД
+*.safetensors
+*.pt
+*.pth
+*.dump
+*.backup

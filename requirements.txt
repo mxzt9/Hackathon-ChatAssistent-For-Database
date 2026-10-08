@@ -1,0 +1,6 @@
+pglast>=8.5,<9
+sqlglot>=28,<31
+asyncpg>=0.30,<1
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+python-dotenv>=1,<2
