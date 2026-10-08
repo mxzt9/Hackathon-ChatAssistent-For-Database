@@ -2,7 +2,7 @@
 
 import pytest
 
-from ml.qwen import QwenSqlModel, check_plan_sql, clean_sql, messages, parse_plan
+from ml.qwen import QwenSqlModel, clean_sql, messages
 from ml.schema import prepare_schema
 from sql.policy import Policy
 
@@ -44,42 +44,12 @@ def test_restricted_schema_does_not_add_hidden_field_examples():
     assert "email" not in prompt
 
 
-SCHEMA = "CREATE TABLE teachers(id int, full_name text); CREATE TABLE courses(id int, teacher_id int);"
-PLAN = {
-    "entity": "teachers",
-    "operation": "count",
-    "metric": None,
-    "fields": [],
-    "filters": [
-        {"column": "teachers.full_name", "value": "Иванов", "match": "surname"}
-    ],
-    "group_by": [],
-}
+SCHEMA = "CREATE TABLE teachers(id int, full_name text);"
 
 
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "SELECT COUNT(c.id) FROM teachers t JOIN courses c ON c.teacher_id=t.id WHERE t.full_name ILIKE 'Иванов %'",
-        "SELECT COUNT(*) FROM teachers WHERE full_name ILIKE '%Иванов%'",
-    ],
-)
-def test_sql_must_count_planned_entity_and_match_surname(sql):
-    with pytest.raises(ValueError):
-        check_plan_sql(sql, SCHEMA, PLAN)
-
-
-def test_two_stage_generation_repairs_against_same_plan(monkeypatch):
-    import json
-
+def test_generation_repairs_invalid_sql(monkeypatch):
     model = QwenSqlModel.__new__(QwenSqlModel)
-    outputs = iter(
-        [
-            json.dumps(PLAN),
-            "SELECT COUNT(*) FROM teachers WHERE full_name ILIKE '%Иванов%'",
-            "SELECT COUNT(*) FROM teachers WHERE full_name ILIKE 'Иванов %'",
-        ]
-    )
+    outputs = iter(["SELECT surname FROM teachers", "SELECT full_name FROM teachers"])
     calls = []
 
     def complete(chat, limit):
@@ -87,55 +57,22 @@ def test_two_stage_generation_repairs_against_same_plan(monkeypatch):
         return next(outputs)
 
     monkeypatch.setattr(model, "complete", complete)
-    sql = model.generate(SCHEMA, "Сколько преподавателей с фамилией Иванов?")
-    assert "Иванов %" in sql
-    assert len(calls) == 3
-    assert "Validated plan" in calls[1][1]["content"]
-    assert "Validation error" in calls[2][-1]["content"]
+    assert "full_name" in model.generate(SCHEMA, "List teachers")
+    assert len(calls) == 2
+    assert "Validation error" in calls[1][-1]["content"]
+    assert "surname" in calls[1][-1]["content"]
 
 
-def test_plan_cannot_invent_columns():
-    import json
-
-    invalid = {**PLAN, "fields": ["teachers.surname"]}
+def test_generation_does_not_bypass_repeated_validation_failure(monkeypatch):
+    model = QwenSqlModel.__new__(QwenSqlModel)
+    monkeypatch.setattr(model, "complete", lambda chat, limit: "DELETE FROM teachers")
     with pytest.raises(ValueError):
-        parse_plan(json.dumps(invalid), SCHEMA)
+        model.generate(SCHEMA, "Delete teachers")
 
 
-@pytest.mark.parametrize(
-    "arrays",
-    [
-        {},
-        {"fields": None, "filters": None, "group_by": None},
-        {"fields": "teachers.full_name", "filters": {}, "group_by": ""},
-    ],
-)
-def test_optional_plan_arrays_are_normalized(arrays):
-    import json
-
-    plan = parse_plan(
-        json.dumps({"entity": "teachers", "operation": "list", **arrays}), SCHEMA
-    )
-    assert isinstance(plan["fields"], list)
-    assert plan["filters"] == []
-    assert plan["group_by"] == []
-
-
-def test_plan_arrays_do_not_accept_arbitrary_types():
-    import json
-
-    with pytest.raises(ValueError, match="filters"):
-        parse_plan(json.dumps({**PLAN, "filters": 42}), SCHEMA)
-
-
-def test_plan_resolves_entity_columns_without_table_prefix():
-    import json
-
-    raw = {
-        **PLAN,
-        "fields": ["full_name"],
-        "filters": [{"column": "full_name", "value": "Иванов", "match": "surname"}],
-    }
-    plan = parse_plan(json.dumps(raw), SCHEMA)
-    assert plan["fields"] == ["teachers.full_name"]
-    assert plan["filters"][0]["column"] == "teachers.full_name"
+def test_examples_use_only_visible_schema():
+    prompt = messages("CREATE TABLE books(id int, title text);", "List books")[1][
+        "content"
+    ]
+    assert "full_name" not in prompt
+    assert "teachers" not in prompt
