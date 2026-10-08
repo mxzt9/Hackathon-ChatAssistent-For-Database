@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 @dataclass(frozen=True)
 class Settings:
     sql_backend: str = "model"
-    model_id: str = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
+    model_id: str = "Qwen/Qwen2.5-Coder-3B-Instruct"
     device: str = "auto"
     torch_threads: int = 2
     demo_db_host: str = "127.0.0.1"

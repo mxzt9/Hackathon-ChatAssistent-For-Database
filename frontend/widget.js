@@ -89,13 +89,6 @@
             query(text);
         }
     });
-    document.querySelectorAll('[data-question]').forEach(button => {
-        button.addEventListener('click', () => {
-            if (busy) return;
-            input.value = button.dataset.question;
-            form.requestSubmit();
-        });
-    });
     input.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
             event.preventDefault();

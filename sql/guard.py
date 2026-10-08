@@ -55,9 +55,11 @@ class GuardResult:
     explain: dict = field(default_factory=dict)
 
 
-def check_sql(raw_sql: str, policy: Policy) -> GuardResult:
+def check_sql(
+    raw_sql: str, policy: Policy, relations: list[dict] | None = None
+) -> GuardResult:
     try:
-        return validate(raw_sql, policy)
+        return validate(raw_sql, policy, relations)
     except (ValueError, SqlglotError) as error:
         return GuardResult(
             allowed=False,
@@ -67,7 +69,66 @@ def check_sql(raw_sql: str, policy: Policy) -> GuardResult:
         )
 
 
-def validate(raw_sql, policy):
+def validate_joins(tree, aliases, relations):
+    permitted = {
+        frozenset(
+            (
+                (r["source_table"], r["source_column"]),
+                (r["target_table"], r["target_column"]),
+            )
+        )
+        for r in relations
+    }
+    connected = {tree.args["from_"].this.alias_or_name}
+
+    def conditions(node):
+        if isinstance(node, exp.Paren):
+            yield from conditions(node.this)
+        elif isinstance(node, exp.And):
+            yield from conditions(node.this)
+            yield from conditions(node.expression)
+        else:
+            yield node
+
+    for join in tree.args.get("joins", []):
+        target = join.this.alias_or_name
+        on = join.args.get("on")
+        linked = False
+        if on is None:
+            raise ValueError(
+                "JOIN должен содержать ON по внешнему ключу; CROSS JOIN запрещён"
+            )
+        for condition in conditions(on):
+            columns = list(condition.find_all(exp.Column))
+            tables = {column.table for column in columns}
+            if len(tables) < 2:
+                continue
+            if not (
+                isinstance(condition, exp.EQ)
+                and isinstance(condition.this, exp.Column)
+                and isinstance(condition.expression, exp.Column)
+            ):
+                raise ValueError(
+                    "Связи в JOIN должны быть равенствами внешних ключей, объединёнными AND"
+                )
+            left, right = condition.this, condition.expression
+            pair = frozenset(
+                ((aliases[left.table], left.name), (aliases[right.table], right.name))
+            )
+            if pair not in permitted:
+                raise ValueError(
+                    f"JOIN {condition.sql()}: такой связи нет среди внешних ключей схемы"
+                )
+            if target in tables and tables - {target} <= connected:
+                linked = True
+        if not linked:
+            raise ValueError(
+                f"JOIN {target} не связан внешним ключом с предыдущими таблицами"
+            )
+        connected.add(target)
+
+
+def validate(raw_sql, policy, relations=None):
     if not raw_sql or len(raw_sql) > 10000:
         raise ValueError("SQL пустой или слишком длинный")
 
@@ -123,7 +184,11 @@ def validate(raw_sql, policy):
         validate_qualify_columns=True,
     )
     aliases = {table.alias_or_name: table.name for table in tree.find_all(exp.Table)}
+    if relations is not None:
+        validate_joins(tree, aliases, relations)
     exposed = list(tree.expressions)
+    if tree.args.get("group"):
+        exposed.append(tree.args["group"])
     if tree.args.get("order"):
         exposed.append(tree.args["order"])
     for expression in exposed:

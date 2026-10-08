@@ -521,11 +521,6 @@ tbody tr:last-child td {
     margin-bottom: 16px;
 }
 
-.demo-body .widget-shell {
-    height: min(70vh, 720px);
-    min-height: 420px;
-}
-
 @media (max-width: 600px) {
     .demo-body {
         padding: 12px;

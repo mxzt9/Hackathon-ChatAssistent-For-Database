@@ -132,6 +132,7 @@ def create_app(
     async def lifespan(app):
         app.state.store = DemoStore(settings, inspector)
         app.state.inference = worker_factory(settings)
+        LOGGER.info("Сервер запущен, генератор SQL: %s", settings.sql_backend)
         warmup = (
             asyncio.create_task(app.state.inference.warmup())
             if settings.sql_backend == "model"
@@ -145,8 +146,29 @@ def create_app(
                 with suppress(asyncio.CancelledError):
                     await warmup
             await app.state.inference.stop()
+            LOGGER.info("Сервер остановлен")
 
     app = FastAPI(title="Чат с PostgreSQL", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def log_request(request, call_next):
+        started = perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            LOGGER.exception("Необработанная ошибка HTTP-запроса")
+            raise
+        route = request.scope.get("route")
+        path = getattr(route, "path", "static/unmatched")
+        if path != "/api/health":
+            LOGGER.info(
+                "HTTP %s %s: %s, %s мс",
+                request.method,
+                path,
+                response.status_code,
+                round((perf_counter() - started) * 1000),
+            )
+        return response
 
     async def process_question(database, payload):
         started = perf_counter()
@@ -164,25 +186,44 @@ def create_app(
                 )
         else:
             sql = await app.state.inference.generate(schema, question)
-        LOGGER.info("SQL модели: %s", sql)
+        checked = check_sql(sql, policy, database["relations"])
+        if not checked.allowed and settings.sql_backend == "model":
+            LOGGER.warning("SQL отклонён; одна попытка исправления: %s", checked.code)
+            correction = (
+                f"Original question: {question}\n"
+                f"Rejected SQL: {sql}\n"
+                f"Validation error: {'; '.join(checked.reasons)}\n"
+                "Return a corrected SELECT answering only the original question. "
+                "Use the schema's exact columns and foreign-key paths. "
+                "Remove unnecessary JOINs and filters; do not add new conditions."
+            )
+            sql = await app.state.inference.generate(schema, correction)
+            checked = check_sql(sql, policy, database["relations"])
+            if checked.allowed:
+                LOGGER.info("SQL прошёл проверку после исправления")
         # Если админ изменил разрешения за время генерации, старый запрос не выполняем.
         current = await app.state.store.get(database["id"])
         if not current or current["version"] != database["version"]:
             raise HTTPException(409, "Настройки изменились. Повторите вопрос.")
-        checked = check_sql(sql, policy)
         if not checked.allowed:
+            LOGGER.warning("SQL отклонён проверкой: %s", checked.code)
             raise HTTPException(422, checked.error)
         credentials = await app.state.store.credentials(database["id"])
         try:
             columns, rows = await executor(
                 credentials, checked.sql, settings.statement_timeout_ms
             )
-        except (OSError, asyncpg.PostgresError, TimeoutError):
+        except (OSError, asyncpg.PostgresError, TimeoutError) as error:
+            LOGGER.error("Ошибка выполнения SQL: %s", type(error).__name__)
             raise HTTPException(
                 503,
                 "Не удалось выполнить запрос в PostgreSQL. Проверьте БД или уточните вопрос.",
             ) from None
-        LOGGER.info("SQL выполнен: %s строк", len(rows))
+        LOGGER.info(
+            "SQL выполнен: %s строк, %s мс",
+            len(rows),
+            round((perf_counter() - started) * 1000),
+        )
         answer = (
             f"Результат: {rows[0][0]}"
             if len(rows) == 1 and len(columns) == 1
@@ -315,6 +356,9 @@ def create_app(
                 model_schema, candidate, make_policy(candidate, settings)
             )
             await app.state.store.update(candidate)
+            LOGGER.info(
+                "Разрешения обновлены, включённых таблиц: %s", len(payload.tables)
+            )
         return management_info(candidate)
 
     @app.delete("/api/connections/{admin_id}")
@@ -347,10 +391,6 @@ def create_app(
     @app.get("/setup/{admin_id}")
     async def setup(admin_id: str):
         return FileResponse(ROOT / "frontend/index.html")
-
-    @app.get("/demo")
-    async def demo():
-        return FileResponse(ROOT / "frontend/demo.html")
 
     @app.get("/chat/{public_id}")
     async def public_chat(public_id: str):

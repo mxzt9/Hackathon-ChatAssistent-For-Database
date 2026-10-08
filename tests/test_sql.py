@@ -16,6 +16,73 @@ POLICY = Policy(
 
 
 @pytest.mark.parametrize(
+    ("condition", "allowed"),
+    [
+        ("c.teacher_id = t.id", True),
+        ("t.id = c.teacher_id AND c.name ILIKE '%math%'", True),
+        ("c.id = t.id", False),
+        ("c.teacher_id = t.id OR c.id = t.id", False),
+        ("c.teacher_id = t.id OR TRUE", False),
+        ("TRUE", False),
+    ],
+)
+def test_join_requires_real_foreign_key(condition, allowed):
+    relations = [
+        {
+            "source_table": "courses",
+            "source_column": "teacher_id",
+            "target_table": "teachers",
+            "target_column": "id",
+        }
+    ]
+    result = check_sql(
+        f"SELECT t.full_name FROM teachers t JOIN courses c ON {condition}",
+        POLICY,
+        relations,
+    )
+    assert result.allowed == allowed, result.reasons
+
+
+def test_join_uses_intermediate_table():
+    policy = Policy(
+        allowed={
+            "faculties": {"id": "public", "name": "public"},
+            "programs": {"id": "public", "faculty_id": "public"},
+            "students": {"id": "aggregate_only", "program_id": "public"},
+        }
+    )
+    relations = [
+        {
+            "source_table": "students",
+            "source_column": "program_id",
+            "target_table": "programs",
+            "target_column": "id",
+        },
+        {
+            "source_table": "programs",
+            "source_column": "faculty_id",
+            "target_table": "faculties",
+            "target_column": "id",
+        },
+    ]
+    valid = check_sql(
+        "SELECT f.name, COUNT(s.id) FROM faculties f "
+        "LEFT JOIN programs p ON p.faculty_id=f.id "
+        "LEFT JOIN students s ON s.program_id=p.id GROUP BY f.name",
+        policy,
+        relations,
+    )
+    assert valid.allowed, valid.reasons
+    invalid = check_sql(
+        "SELECT f.name, COUNT(s.id) FROM faculties f "
+        "JOIN students s ON s.program_id=f.id GROUP BY f.name",
+        policy,
+        relations,
+    )
+    assert not invalid.allowed
+
+
+@pytest.mark.parametrize(
     "sql",
     [
         "SELECT full_name FROM teachers",

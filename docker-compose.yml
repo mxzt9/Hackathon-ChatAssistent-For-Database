@@ -10,9 +10,6 @@ services:
             - '127.0.0.1:5432:5432'
         volumes:
             - postgres_data:/var/lib/postgresql/data
-            - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-            - ./database/readonly_role.sql:/docker-entrypoint-initdb.d/02_readonly.sql:ro
-            - ./database/demo_seed.sql:/docker-entrypoint-initdb.d/03_seed.sql:ro
         mem_limit: 512m
         cpus: 1.0
         pids_limit: 100
@@ -21,26 +18,5 @@ services:
             interval: 3s
             timeout: 3s
             retries: 20
-    app:
-        profiles: ['server']
-        build: .
-        restart: unless-stopped
-        ports:
-            - '127.0.0.1:8000:8000'
-        environment:
-            DEVICE: cpu
-            DEMO_DB_HOST: postgres
-            SQL_BACKEND: local
-        depends_on:
-            postgres:
-                condition: service_healthy
-        mem_limit: 2g
-        cpus: 2.0
-        pids_limit: 100
-        healthcheck:
-            test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
-            interval: 30s
-            timeout: 5s
-            retries: 3
 volumes:
     postgres_data:

@@ -7,6 +7,8 @@ from time import monotonic
 
 from fastapi import HTTPException
 
+from app.logging_config import configure_logging
+
 LOGGER = logging.getLogger(__name__)
 MAX_PENDING = 5
 LOAD_TIMEOUT = 600
@@ -14,13 +16,19 @@ QUERY_TIMEOUT = 120
 
 
 def model_process(connection, settings):
+    # Отдельный файл исключает одновременную ротацию из двух процессов.
+    configure_logging("model.log")
     try:
         import torch
 
         from ml.qwen import QwenSqlModel
 
         torch.set_num_threads(settings.torch_threads)
+        LOGGER.info(
+            "Загрузка модели: %s, устройство: %s", settings.model_id, settings.device
+        )
         model = QwenSqlModel(settings.model_id, settings.device)
+        LOGGER.info("Модель загружена, устройство: %s", model.device)
         connection.send({"ready": True})
         while True:
             payload = connection.recv()
@@ -30,8 +38,12 @@ def model_process(connection, settings):
                 connection.send(
                     {"sql": model.generate(payload["schema"], payload["question"])}
                 )
-            except (ValueError, RuntimeError):
-                LOGGER.exception("Ошибка генерации SQL")
+            except (ValueError, RuntimeError) as error:
+                LOGGER.warning(
+                    "Ошибка генерации SQL: %s: %s",
+                    type(error).__name__,
+                    str(error).replace("\n", " ")[:300],
+                )
                 connection.send(
                     {"error": "Модель не смогла составить SQL. Уточните вопрос."}
                 )
@@ -75,12 +87,17 @@ class InferenceWorker:
                 if not payload.get("ready"):
                     raise RuntimeError("Qwen did not become ready")
                 self.status = "ready"
-            except (Exception, asyncio.CancelledError):
+                LOGGER.info("Процесс Qwen готов")
+            except asyncio.CancelledError:
+                LOGGER.info("Загрузка Qwen отменена при остановке сервера")
+                await self.stop()
+                raise
+            except Exception:
                 LOGGER.exception("Qwen недоступен; HTTP-сервер продолжает работать")
                 await self.stop()
                 self.status = "unavailable"
-                if asyncio.current_task().cancelling():
-                    raise
+            finally:
+                child.close()
 
     async def generate(self, schema, question):
         if self.status != "ready":
@@ -90,6 +107,7 @@ class InferenceWorker:
         # Один активный вопрос и максимум четыре ожидающих; счётчик изменяется
         # без await, поэтому два запроса не могут одновременно занять последнее место.
         if self.pending >= MAX_PENDING:
+            LOGGER.warning("Запрос отклонён: очередь Qwen заполнена")
             raise HTTPException(
                 503,
                 "Модель занята. Повторите вопрос позже.",

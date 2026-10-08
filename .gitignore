@@ -1,7 +1,7 @@
 # Настройки и окружение разработчика
 .env
 .env.*
-!.env.fullstack.example
+!.env.example
 .venv/
 venv/
 .idea/
@@ -19,10 +19,23 @@ htmlcov/
 coverage.xml
 junit.xml
 *.log
+/logs/
 
 # Локальные веса моделей и выгрузки БД
 *.safetensors
 *.pt
 *.pth
+/.model-cache/
 *.dump
 *.backup
+
+# Локальные материалы и инструменты демонстрации
+/docs/
+/database/
+/scripts/
+/.editorconfig
+/sql/whitelist.json
+/frontend/demo.html
+*.sqlite
+*.sqlite3
+*.db

@@ -10,7 +10,40 @@ from app.config import Settings
 from app.main import create_app
 from app.university import university_sql
 from sql.guard import check_sql
-from sql.policy import load_policy
+from sql.policy import build_policy
+
+
+@pytest.fixture
+def policy():
+    return build_policy(
+        {
+            "person_tables": ["students", "applicants", "applications"],
+            "allowed": {
+                "faculties": ["id", "name"],
+                "programs": ["id", "faculty_id", "name"],
+                "teachers": ["id", "full_name"],
+                "courses": ["id", "teacher_id", "name"],
+                "students": {
+                    "id": "aggregate_only",
+                    "program_id": "public",
+                    "admission_year": "public",
+                },
+                "applications": {
+                    "id": "aggregate_only",
+                    "program_id": "public",
+                    "year": "public",
+                    "status": "public",
+                },
+                "grades": {
+                    "id": "public",
+                    "student_id": "aggregate_only",
+                    "course_id": "public",
+                    "grade": "aggregate_only",
+                    "semester": "public",
+                },
+            },
+        }
+    )
 
 
 @pytest.mark.parametrize(
@@ -29,8 +62,7 @@ from sql.policy import load_policy
         "Покажи образовательные программы",
     ],
 )
-def test_supported_intents_pass_guard(question):
-    policy = load_policy()
+def test_supported_intents_pass_guard(question, policy):
     sql = university_sql(question, policy)
     assert sql, question
     checked = check_sql(sql, policy)
@@ -49,12 +81,11 @@ def test_supported_intents_pass_guard(question):
         "Сколько заявлений за 2025 и 2026 годы?",
     ],
 )
-def test_unsupported_intents_are_not_guessed(question):
-    assert university_sql(question, load_policy()) is None
+def test_unsupported_intents_are_not_guessed(question, policy):
+    assert university_sql(question, policy) is None
 
 
-def test_missing_join_key_is_not_bypassed():
-    policy = load_policy()
+def test_missing_join_key_is_not_bypassed(policy):
     allowed = {table: dict(fields) for table, fields in policy.allowed.items()}
     del allowed["teachers"]["id"]
     assert (

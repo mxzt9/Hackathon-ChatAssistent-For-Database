@@ -128,5 +128,56 @@ def test_generated_sql_cannot_read_unselected_column(client):
 
 
 def test_pages_and_widget_are_served(client):
-    for path in ("/", "/demo", "/widget", "/assets/widget.js", "/favicon.ico"):
+    for path in ("/", "/widget", "/assets/widget.js", "/favicon.ico"):
         assert client.get(path).status_code == 200
+
+
+@pytest.mark.parametrize("fixed", [True, False])
+def test_invalid_join_is_retried_once_before_execution(fixed):
+    calls, executed = [], []
+    invalid = "SELECT t.full_name FROM teachers t JOIN courses c ON c.id=t.id"
+
+    class RepairModel(Model):
+        async def generate(self, schema, question):
+            calls.append(question)
+            if fixed and len(calls) == 2:
+                return "SELECT full_name FROM teachers"
+            return invalid
+
+    async def inspect_relations(credentials):
+        metadata = await inspect(credentials)
+        metadata["tables"].append(
+            {
+                "name": "courses",
+                "fields": [["id", "integer"], ["teacher_id", "integer"]],
+                "levels": {"id": "public", "teacher_id": "public"},
+            }
+        )
+        metadata["relations"] = [
+            {
+                "source_table": "courses",
+                "source_column": "teacher_id",
+                "target_table": "teachers",
+                "target_column": "id",
+            }
+        ]
+        return metadata
+
+    async def track_execution(credentials, sql, timeout):
+        executed.append(sql)
+        return await execute(credentials, sql, timeout)
+
+    app = create_app(
+        Settings(),
+        worker_factory=RepairModel,
+        inspector=inspect_relations,
+        executor=track_execution,
+    )
+    with TestClient(app) as client:
+        response = client.post("/api/query", json={"question": "Покажи преподавателей"})
+    assert len(calls) == 2
+    assert invalid in calls[1]
+    assert "внешних ключей" in calls[1]
+    assert response.status_code == (200 if fixed else 422)
+    assert len(executed) == (1 if fixed else 0)
+    assert all("JOIN" not in sql for sql in executed)

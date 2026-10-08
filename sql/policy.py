@@ -10,8 +10,6 @@ PUBLIC = "public"
 AGGREGATE_ONLY = "aggregate_only"
 LEVELS = {PUBLIC, AGGREGATE_ONLY}
 
-DEFAULT_POLICY_PATH = Path(__file__).with_name("whitelist.json")
-
 # Части имён колонок, которые нельзя открывать ни в одной таблице:
 # паспортные, контактные и прочие чувствительные данные.
 SENSITIVE_TOKENS = {
@@ -119,5 +117,5 @@ def build_policy(raw: dict) -> Policy:
     return Policy(allowed=allowed, limits=limits, person_tables=person_tables)
 
 
-def load_policy(path: str | Path = DEFAULT_POLICY_PATH) -> Policy:
+def load_policy(path: str | Path) -> Policy:
     return build_policy(json.loads(Path(path).read_text(encoding="utf-8")))

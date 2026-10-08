@@ -2,10 +2,13 @@
 
 import asyncio
 import copy
+import logging
 import secrets
 
 import asyncpg
 from fastapi import HTTPException
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DemoStore:
@@ -34,7 +37,10 @@ class DemoStore:
         if self.database is None:
             try:
                 metadata = await self.inspector(self.connection)
-            except (OSError, asyncpg.PostgresError, TimeoutError):
+            except (OSError, asyncpg.PostgresError, TimeoutError) as error:
+                LOGGER.error(
+                    "Ошибка подключения к локальной БД: %s", type(error).__name__
+                )
                 raise HTTPException(
                     503,
                     "Локальная БД недоступна. Запустите docker compose up -d postgres.",
@@ -71,7 +77,8 @@ class DemoStore:
                 raise HTTPException(409, "Достигнут лимит подключений прототипа: 8.")
             try:
                 metadata = await self.inspector(credentials)
-            except (OSError, asyncpg.PostgresError, TimeoutError):
+            except (OSError, asyncpg.PostgresError, TimeoutError) as error:
+                LOGGER.warning("Ошибка подключения к БД: %s", type(error).__name__)
                 raise HTTPException(
                     422,
                     "Не удалось подключиться к PostgreSQL. Проверьте адрес, пароль и SSL.",
@@ -95,6 +102,9 @@ class DemoStore:
                 "whitelist": whitelist,
             }
             self.connection_credentials[admin_id] = dict(credentials)
+            LOGGER.info(
+                "Подключение создано, доступных таблиц: %s", len(metadata["tables"])
+            )
             return copy.deepcopy(self.connections[admin_id])
 
     async def public(self, public_id):
@@ -115,3 +125,4 @@ class DemoStore:
                 raise HTTPException(404, "Подключение не найдено.")
             del self.connections[identifier]
             del self.connection_credentials[identifier]
+            LOGGER.info("Подключение удалено")
